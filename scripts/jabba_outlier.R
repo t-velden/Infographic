@@ -71,6 +71,15 @@ slope_all <- unname(coef(lm(mass ~ height, data = df))[2])
 slope_no  <- unname(coef(lm(mass ~ height, data = no_jabba))[2])
 heaviest  <- sort(df$mass, decreasing = TRUE)[1:2]
 
+# BMI = mass (kg) / height (m)^2, computed from the same data
+bmi_of <- function(name_pattern) {
+  row <- df |> filter(grepl(name_pattern, name))
+  if (nrow(row) != 1) stop("Expected exactly one match for '", name_pattern, "'.", call. = FALSE)
+  row$mass / (row$height / 100)^2
+}
+bmi_jabba <- bmi_of("^Jabba")
+bmi_han   <- bmi_of("^Han Solo$")
+
 # ---- plot --------------------------------------------------------------------
 p <- ggplot(panels, aes(height, mass)) +
   geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
@@ -85,12 +94,14 @@ p <- ggplot(panels, aes(height, mass)) +
   labs(
     title    = "One slug skews the whole galaxy",
     subtitle = sprintf(
-      paste0("Jabba weighs %.0f kg, %.1fx the next-heaviest character. With him in the data, each extra cm of\n",
-             "height 'adds' %.1f kg; without him, %.1f kg. (Dashed line = linear fit; %d characters with known height and mass.)"),
-      heaviest[1], heaviest[1] / heaviest[2], slope_all, slope_no, nrow(df)),
+      paste0("Jabba weighs %.0f kg, %.1fx the next-heaviest character.\n",
+             "Each extra cm of height 'adds' %.1f kg with him in the data, %.1f kg without (dashed lines = linear fit).\n",
+             "BMI: Jabba %.0f, Han Solo %.1f (healthy range for humans: about 18.5-25)."),
+      heaviest[1], heaviest[1] / heaviest[2], slope_all, slope_no, bmi_jabba, bmi_han),
     x = "Height (cm)", y = "Mass (kg)", colour = NULL,
-    caption = paste0("Source: dplyr::starwars (dplyr ", packageVersion("dplyr"),
-                     "). Species: three most common among those shown, the rest as Other.")
+    caption = paste0("Source: dplyr::starwars (dplyr ", packageVersion("dplyr"), "). ",
+                     nrow(df), " characters with known height and mass. ",
+                     "Species: three most common among those shown, the rest as Other.")
   ) +
   theme_minimal(base_size = base_size) +
   theme(
@@ -111,5 +122,5 @@ p <- ggplot(panels, aes(height, mass)) +
 
 # ---- write -------------------------------------------------------------------
 dir.create(dirname(out_file), showWarnings = FALSE, recursive = TRUE)
-ggsave(out_file, p, width = 12, height = 6.8, dpi = 150, bg = bg)
+ggsave(out_file, p, width = 12, height = 7.2, dpi = 150, bg = bg)
 message("Wrote ", out_file)
