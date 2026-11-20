@@ -6,7 +6,9 @@
 #
 # Arguments (both required, in this order):
 #   1. output   path of the PNG to write; must end in .png
-#   2. palette  "dark", "light" or "pastel"
+#   2. palette  "dark", "light" or "pastel", or a colour-blind palette on the dark
+#               background: "colorblind" (general), "deuteranopia", "protanopia"
+#               or "tritanopia"
 #
 # Command that produced the committed image (run from the repository root):
 #   Rscript scripts/gender_gap.R figures/gender_gap.png dark
@@ -15,25 +17,42 @@ suppressPackageStartupMessages(library(tidyverse))
 
 # ---- arguments ---------------------------------------------------------------
 args  <- commandArgs(trailingOnly = TRUE)
-usage <- "Usage: Rscript scripts/gender_gap.R <output.png> <dark|light|pastel>"
+usage <- paste0("Usage: Rscript scripts/gender_gap.R <output.png> ",
+                "<dark|light|pastel|colorblind|deuteranopia|protanopia|tritanopia>")
 
 if (length(args) != 2) {
   stop("Expected 2 arguments but got ", length(args), ".\n", usage, call. = FALSE)
 }
 out_file     <- args[1]
-palette_name <- args[2]
+palette_name <- tolower(args[2])
 if (!grepl("\\.png$", out_file, ignore.case = TRUE)) {
   stop("<output> must end in .png, got '", out_file, "'.\n", usage, call. = FALSE)
 }
-if (!palette_name %in% c("dark", "light", "pastel")) {
-  stop("<palette> must be 'dark', 'light' or 'pastel', got '", palette_name, "'.\n",
-       usage, call. = FALSE)
+palette_names <- c("dark", "light", "pastel", "colorblind", "deuteranopia", "protanopia", "tritanopia")
+if (!palette_name %in% palette_names) {
+  stop("<palette> must be one of: ", paste(palette_names, collapse = ", "),
+       "; got '", args[2], "'.\n", usage, call. = FALSE)
 }
 
 trilogy_levels <- c("Original trilogy", "Prequel trilogy")
 
+# Colour-blind palettes (dark background): one colour pair per type, checked with a
+# colour-vision simulation. "colorblind" is Okabe-Ito orange + sky blue; deuteranopia and
+# protanopia use yellow + blue; tritanopia uses red + teal. First colour = original
+# trilogy, second = prequel trilogy. These pairs match the Human/Droid colours in the other
+# two scripts.
+cb_pal <- function(cols) {
+  list(bg = "#0b0d17", fg = "#f5f5f5", muted = "#2a2f45",
+       bar    = setNames(cols, trilogy_levels),
+       header = setNames(cols, trilogy_levels))
+}
+
 # bar = bar colour per trilogy, header = colour of the trilogy headers
 pal <- switch(palette_name,
+              colorblind   = cb_pal(c("#E69F00", "#56B4E9")),
+              deuteranopia = cb_pal(c("#F2C14E", "#4C8DFF")),
+              protanopia   = cb_pal(c("#F2D04E", "#4C8DFF")),
+              tritanopia   = cb_pal(c("#FF6B81", "#2EC4B6")),
               dark   = list(bg = "#0b0d17", fg = "#f5f5f5", muted = "#2a2f45",
                             bar    = setNames(rep("#f2c14e", 2), trilogy_levels),
                             header = setNames(rep("#f2c14e", 2), trilogy_levels)),
@@ -133,7 +152,10 @@ p <- ggplot(by_film) +
       nrow(cast), 100 * overall, 100 * avg_orig, 100 * avg_pre, diff_pp),
     caption  = paste0("Source: dplyr::starwars (dplyr ", packageVersion("dplyr"),
                       "). Gender recorded as 'feminine' or 'masculine'. Sequel trilogy not included. ",
-                      "Averages are unweighted means of the per-film shares.")
+                      "Averages are unweighted means of the per-film shares.",
+                      if (palette_name %in% c("colorblind", "deuteranopia", "protanopia", "tritanopia"))
+                        sprintf(" Colours chosen to stay distinguishable (%s).", palette_name)
+                      else "")
   ) +
   theme_minimal(base_size = 14) +
   theme(
