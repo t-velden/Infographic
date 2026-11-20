@@ -11,8 +11,8 @@
 #                 every other species is grouped as "Other".
 #   3. n_cols     number of dots per row, a whole number from 5 to 20.
 #                 The image size adapts to this.
-#   4. palette    "standard" or "colorblind" (Okabe-Ito colours, safe for the
-#                 common forms of colour blindness)
+#   4. palette    "standard", or a colour-blind palette: "colorblind" (general),
+#                 "deuteranopia", "protanopia" or "tritanopia"
 #
 # Command that produced the committed image (run from the repository root):
 #   Rscript scripts/species_waffle.R figures/species_waffle.png 5 10 standard
@@ -22,7 +22,8 @@ suppressPackageStartupMessages(library(tidyverse))
 # ---- arguments ---------------------------------------------------------------
 args  <- commandArgs(trailingOnly = TRUE)
 usage <- paste0("Usage: Rscript scripts/species_waffle.R ",
-                "<output.png> <n_species 1-6> <n_cols 5-20> <standard|colorblind>")
+                "<output.png> <n_species 1-6> <n_cols 5-20> ",
+                "<standard|colorblind|deuteranopia|protanopia|tritanopia>")
 
 if (length(args) != 4) {
   stop("Expected 4 arguments but got ", length(args), ".\n", usage, call. = FALSE)
@@ -40,23 +41,36 @@ whole_number <- function(text, label, lo, hi) {
 out_file     <- args[1]
 n_species    <- whole_number(args[2], "n_species", 1, 6)
 n_cols       <- whole_number(args[3], "n_cols", 5, 20)
-palette_name <- args[4]
+palette_name <- tolower(args[4])
 if (!grepl("\\.png$", out_file, ignore.case = TRUE)) {
   stop("<output> must end in .png, got '", out_file, "'.\n", usage, call. = FALSE)
 }
-if (!palette_name %in% c("standard", "colorblind")) {
-  stop("<palette> must be 'standard' or 'colorblind', got '", palette_name, "'.\n",
-       usage, call. = FALSE)
-}
-
 bg <- "#0b0d17"; fg <- "#f5f5f5"
 
-pal <- switch(palette_name,
-              standard   = list(human = "#f2c14e", droid = "#4cc9f0", other = "#8a8fa3",
-                                others = c("#f72585", "#80ed99", "#b388eb", "#ff7f50", "#d4e157")),
-              colorblind = list(human = "#E69F00", droid = "#56B4E9", other = "#999999",
-                                others = c("#009E73", "#F0E442", "#CC79A7", "#D55E00", "#0072B2"))
+# Colour-blind palettes. "colorblind" is Okabe-Ito. The three specific types use the colour
+# pair that suits them (checked with a colour-vision simulation): yellow + blue for the
+# red-green types (deuteranopia, protanopia), red + teal for tritanopia (blue-yellow).
+# human / droid / others[1..5] / other (grey) are used in this order; jabba = highlight colour.
+cb_sets <- list(
+  colorblind   = list(human = "#E69F00", droid = "#56B4E9", other = "#999999", jabba = "#F0E442",
+                      others = c("#009E73", "#F0E442", "#CC79A7", "#D55E00", "#0072B2")),
+  deuteranopia = list(human = "#F2C14E", droid = "#4C8DFF", other = "#999999", jabba = "#33FFC2",
+                      others = c("#93CEEC", "#93ECBF", "#C67953", "#E467BB", "#53C68C")),
+  protanopia   = list(human = "#F2D04E", droid = "#4C8DFF", other = "#999999", jabba = "#4DFFFF",
+                      others = c("#DD713C", "#93ECCE", "#93CEEC", "#E467A6", "#D2A679")),
+  tritanopia   = list(human = "#FF6B81", droid = "#2EC4B6", other = "#999999", jabba = "#D1FF1A",
+                      others = c("#ECCE93", "#BBE467", "#B579D2", "#7988D2", "#EC93CE"))
 )
+
+standard <- list(human = "#f2c14e", droid = "#4cc9f0", other = "#8a8fa3",
+                 others = c("#f72585", "#80ed99", "#b388eb", "#ff7f50", "#d4e157"))
+palettes <- c(list(standard = standard), cb_sets)
+
+if (!palette_name %in% names(palettes)) {
+  stop("<palette> must be one of: ", paste(names(palettes), collapse = ", "),
+       "; got '", args[4], "'.\n", usage, call. = FALSE)
+}
+pal <- palettes[[palette_name]]
 
 # ---- data --------------------------------------------------------------------
 species_known <- starwars |> filter(!is.na(species))
@@ -144,7 +158,10 @@ p <- ggplot(d, aes(x, y)) +
              "The %d most common species (plus droids) are shown separately, all others as Other."),
       n_total, n_droid, droid_pct, n_species),
     caption  = paste0("Source: dplyr::starwars (dplyr ", packageVersion("dplyr"), ").",
-                      if (palette_name == "colorblind") " Colours: Okabe-Ito palette." else "")
+                      if (palette_name == "colorblind") " Colours: Okabe-Ito palette."
+                      else if (palette_name != "standard")
+                        sprintf(" Colours chosen to stay distinguishable with %s.", palette_name)
+                      else "")
   ) +
   theme_void(base_size = 14) +
   theme(
