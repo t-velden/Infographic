@@ -2,24 +2,28 @@
 # Height vs. mass of Star Wars characters, with and without Jabba the Hutt.
 # Data: dplyr::starwars (built in to tidyverse). Only base R + tidyverse used.
 #
-# Arguments (required):
+# Arguments (all three required, in this order):
 #   1. output     path of the PNG to write; must end in .png
 #   2. base_size  base text size in points, a number between 8 and 24
+#   3. palette    "standard", or a colour-blind palette: "colorblind" (general),
+#                 "deuteranopia", "protanopia" or "tritanopia"
 #
 # Command that produced the committed image (run from the repository root):
-#   Rscript scripts/jabba_outlier.R figures/jabba_outlier.png 14
+#   Rscript scripts/jabba_outlier.R figures/jabba_outlier.png 14 standard
 
 suppressPackageStartupMessages(library(tidyverse))
 
 # ---- arguments ---------------------------------------------------------------
 args  <- commandArgs(trailingOnly = TRUE)
-usage <- "Usage: Rscript scripts/jabba_outlier.R <output.png> <base_size 8-24>"
+usage <- paste0("Usage: Rscript scripts/jabba_outlier.R <output.png> <base_size 8-24> ",
+                "<standard|colorblind|deuteranopia|protanopia|tritanopia>")
 
-if (length(args) != 2) {
-  stop("Expected 2 arguments but got ", length(args), ".\n", usage, call. = FALSE)
+if (length(args) != 3) {
+  stop("Expected 3 arguments but got ", length(args), ".\n", usage, call. = FALSE)
 }
-out_file  <- args[1]
-base_size <- suppressWarnings(as.numeric(args[2]))
+out_file     <- args[1]
+base_size    <- suppressWarnings(as.numeric(args[2]))
+palette_name <- tolower(args[3])
 if (!grepl("\\.png$", out_file, ignore.case = TRUE)) {
   stop("<output> must end in .png, got '", out_file, "'.\n", usage, call. = FALSE)
 }
@@ -27,6 +31,34 @@ if (is.na(base_size) || base_size < 8 || base_size > 24) {
   stop("<base_size> must be a number between 8 and 24, got '", args[2], "'.\n",
        usage, call. = FALSE)
 }
+
+# Colour-blind palettes. "colorblind" is Okabe-Ito. The three specific types use the colour
+# pair that suits them (checked with a colour-vision simulation): yellow + blue for the
+# red-green types (deuteranopia, protanopia), red + teal for tritanopia (blue-yellow).
+# human / droid / others[1..5] / other (grey) are used in this order; jabba = highlight colour.
+cb_sets <- list(
+  colorblind   = list(human = "#E69F00", droid = "#56B4E9", other = "#999999", jabba = "#39ff14",
+                      others = c("#009E73", "#F0E442", "#CC79A7", "#D55E00", "#0072B2")),
+  deuteranopia = list(human = "#F2C14E", droid = "#4C8DFF", other = "#999999", jabba = "#33FFC2",
+                      others = c("#93CEEC", "#93ECBF", "#C67953", "#E467BB", "#53C68C")),
+  protanopia   = list(human = "#F2D04E", droid = "#4C8DFF", other = "#999999", jabba = "#4DFFFF",
+                      others = c("#DD713C", "#93ECCE", "#93CEEC", "#E467A6", "#D2A679")),
+  tritanopia   = list(human = "#FF6B81", droid = "#2EC4B6", other = "#999999", jabba = "#D1FF1A",
+                      others = c("#ECCE93", "#BBE467", "#B579D2", "#7988D2", "#EC93CE"))
+)
+
+# species = colours for the (up to) four species groups in order, Other last
+standard <- list(species = c("#f2c14e", "#4cc9f0", "#f72585", "#9aa0a6"), jabba = "#39ff14")
+palettes <- c(
+  list(standard = standard),
+  lapply(cb_sets, function(x) list(species = c(x$human, x$droid, x$others[1], x$other),
+                                   jabba = x$jabba))
+)
+if (!palette_name %in% names(palettes)) {
+  stop("<palette> must be one of: ", paste(names(palettes), collapse = ", "),
+       "; got '", args[3], "'.\n", usage, call. = FALSE)
+}
+pal <- palettes[[palette_name]]
 
 bg <- "#0b0d17"; fg <- "#f5f5f5"; grid_col <- "#2a2f45"
 
@@ -48,8 +80,8 @@ df <- df |>
          group = factor(group, levels = c(species_lv, jabba_label)))
 
 cols <- c(
-  setNames(c("#f2c14e", "#4cc9f0", "#f72585", "#9aa0a6")[seq_along(species_lv)], species_lv),
-  setNames("#39ff14", jabba_label)   # neon green
+  setNames(pal$species[seq_along(species_lv)], species_lv),
+  setNames(pal$jabba, jabba_label)   # highlight colour for Jabba
 )
 
 no_jabba <- df |> filter(!grepl("^Jabba", name))
@@ -101,7 +133,10 @@ p <- ggplot(panels, aes(height, mass)) +
     x = "Height (cm)", y = "Mass (kg)", colour = NULL,
     caption = paste0("Source: dplyr::starwars (dplyr ", packageVersion("dplyr"), "). ",
                      nrow(df), " characters with known height and mass. ",
-                     "Species: three most common among those shown, the rest as Other.")
+                     "Species: three most common among those shown, the rest as Other.",
+                     if (palette_name != "standard")
+                       sprintf(" Colours chosen to stay distinguishable with %s.", palette_name)
+                     else "")
   ) +
   theme_minimal(base_size = base_size) +
   theme(
