@@ -40,8 +40,17 @@ if ("Other" %in% levels(df$species)) {
   df <- df |> mutate(species = fct_relevel(species, "Other", after = Inf))
 }
 
-lv   <- levels(df$species)
-cols <- setNames(c("#f2c14e", "#4cc9f0", "#f72585", "#9aa0a6")[seq_along(lv)], lv)
+# Jabba gets his own group so he can have his own colour and legend entry
+jabba_label <- "Jabba the Hutt"
+species_lv  <- levels(df$species)
+df <- df |>
+  mutate(group = if_else(grepl("^Jabba", name), jabba_label, as.character(species)),
+         group = factor(group, levels = c(species_lv, jabba_label)))
+
+cols <- c(
+  setNames(c("#f2c14e", "#4cc9f0", "#f72585", "#9aa0a6")[seq_along(species_lv)], species_lv),
+  setNames("#39ff14", jabba_label)   # neon green
+)
 
 no_jabba <- df |> filter(!grepl("^Jabba", name))
 
@@ -66,11 +75,13 @@ heaviest  <- sort(df$mass, decreasing = TRUE)[1:2]
 p <- ggplot(panels, aes(height, mass)) +
   geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
               colour = fg, linetype = "dashed", linewidth = 0.6) +
-  geom_point(aes(colour = species), size = 3, alpha = 0.9) +
+  geom_point(aes(colour = group, size = group == jabba_label), alpha = 0.9) +
   geom_text(data = labelled, aes(label = name), hjust = 1.12,
             colour = fg, size = base_size * 0.3, fontface = "bold") +
   facet_wrap(~panel, nrow = 1, scales = "free") +
-  scale_colour_manual(values = cols) +
+  scale_colour_manual(values = cols, limits = names(cols)) +
+  scale_size_manual(values = c(`FALSE` = 3, `TRUE` = 5), guide = "none") +
+  guides(colour = guide_legend(override.aes = list(size = 4))) +
   labs(
     title    = "One slug skews the whole galaxy",
     subtitle = sprintf(
